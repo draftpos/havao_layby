@@ -1,0 +1,21 @@
+[
+ {
+  "allow_guest": 0,
+  "api_method": null,
+  "cron_format": null,
+  "disabled": 0,
+  "docstatus": 0,
+  "doctype": "Server Script",
+  "doctype_event": "After Submit",
+  "enable_rate_limit": 0,
+  "event_frequency": "All",
+  "modified": "2026-03-04 21:50:16.456799",
+  "module": "Havano Laybye",
+  "name": "Sales Order Auto Payment Entry",
+  "rate_limit_count": 5,
+  "rate_limit_seconds": 86400,
+  "reference_doctype": "Sales Order",
+  "script": "# ── Only run if payment details are filled ──────────────────\r\nif not doc.custom_account_paid_to:\r\n    frappe.throw(\"Please select an Account Paid To before submitting.\")\r\n\r\nif not doc.custom_amount_paid or doc.custom_amount_paid <= 0:\r\n    frappe.throw(\"Please enter Amount Paid before submitting.\")\r\n\r\ncompany = doc.company\r\ncompany_currency = frappe.db.get_value(\"Company\", company, \"default_currency\")\r\nreceivable_account = frappe.db.get_value(\"Company\", company, \"default_receivable_account\")\r\n\r\npaid_to_account = doc.custom_account_paid_to\r\npaid_to_currency = (\r\n    doc.custom_account_currency\r\n    or frappe.db.get_value(\"Account\", paid_to_account, \"account_currency\")\r\n    or company_currency\r\n)\r\n\r\ntotal_paid = doc.custom_amount_paid or 0\r\n\r\nreceived_amount = (\r\n    doc.custom_received_amount\r\n    if paid_to_currency != company_currency\r\n    else total_paid\r\n)\r\n\r\n# ── References ───────────────────────────────────────────────\r\nreferences = [{\r\n    \"reference_doctype\":  \"Sales Order\",\r\n    \"reference_name\":     doc.name,\r\n    \"total_amount\":       doc.grand_total or 0,\r\n    \"outstanding_amount\": doc.grand_total or 0,\r\n    \"allocated_amount\":   total_paid,\r\n}]\r\n\r\n# ── Create Payment Entry ─────────────────────────────────────\r\npe = frappe.get_doc({\r\n    \"doctype\":                    \"Payment Entry\",\r\n    \"payment_type\":               \"Receive\",\r\n    \"party_type\":                 \"Customer\",\r\n    \"party\":                      doc.customer,\r\n    \"party_name\":                 doc.customer,\r\n    \"company\":                    company,\r\n    \"posting_date\":               doc.transaction_date,\r\n    \"paid_from\":                  receivable_account,\r\n    \"paid_to\":                    paid_to_account,\r\n    \"paid_from_account_currency\": company_currency,\r\n    \"paid_to_account_currency\":   paid_to_currency,\r\n    \"source_exchange_rate\":       doc.custom_exchange_rate or 1,\r\n    \"target_exchange_rate\":       doc.custom_exchange_rate or 1,\r\n    \"paid_amount\":                total_paid,\r\n    \"received_amount\":            received_amount or total_paid,\r\n    \"mode_of_payment\":            doc.custom_payment_method or \"Cash\",\r\n    \"reference_no\":               doc.name,\r\n    \"reference_date\":             doc.transaction_date,\r\n    \"remarks\":                    \"Payment via Sales Order \" + doc.name,\r\n    \"references\":                 references,\r\n})\r\n\r\npe.insert(ignore_permissions=True)\r\npe.submit()\r\n\r\n# ── Link back to Sales Order ─────────────────────────────────\r\nfrappe.db.set_value(\"Sales Order\", doc.name, \"custom_payment_entry\", pe.name)\r\nfrappe.msgprint(\"Payment Entry \" + pe.name + \" created successfully.\", alert=True)",
+  "script_type": "DocType Event"
+ }
+]
