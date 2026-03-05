@@ -1,0 +1,32 @@
+{
+ "actions": [],
+ "creation": "2026-03-04 08:00:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": ["payment_date","payment_method","account","account_currency","column_break_1","paid_amount","received_amount","exchange_rate","column_break_2","payment_entry","remarks"],
+ "fields": [
+  {"default": "Today", "fieldname": "payment_date",     "fieldtype": "Date",       "in_list_view": 1, "label": "Date",                     "reqd": 1},
+  {"default": "Cash",  "fieldname": "payment_method",   "fieldtype": "Select",     "in_list_view": 1, "label": "Payment Method",           "options": "Cash\nBank\nMobile Money", "reqd": 1},
+  {                    "fieldname": "account",           "fieldtype": "Link",       "in_list_view": 1, "label": "Account",                  "options": "Account", "reqd": 1},
+  {                    "fieldname": "account_currency",  "fieldtype": "Data",                          "label": "Account Currency",         "print_hide": 1, "read_only": 1},
+  {                    "fieldname": "column_break_1",    "fieldtype": "Column Break"},
+  {                    "fieldname": "paid_amount",       "fieldtype": "Currency",   "in_list_view": 1, "label": "Paid Amount (Base)",       "reqd": 1},
+  {                    "fieldname": "received_amount",   "fieldtype": "Currency",                      "label": "Received Amount (Foreign)","options": "account_currency"},
+  {"default": "1",     "fieldname": "exchange_rate",     "fieldtype": "Float",                         "label": "Exchange Rate"},
+  {                    "fieldname": "column_break_2",    "fieldtype": "Column Break"},
+  {                    "fieldname": "payment_entry",     "fieldtype": "Link",                          "label": "Payment Entry",            "options": "Payment Entry", "read_only": 1},
+  {                    "fieldname": "remarks",           "fieldtype": "Small Text",                    "label": "Remarks"}
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-03-04 08:00:00",
+ "modified_by": "Administrator",
+ "module": "Havano Laybye",
+ "name": "Laybye Payment Item",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}
