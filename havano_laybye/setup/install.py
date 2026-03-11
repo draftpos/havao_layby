@@ -2,6 +2,7 @@ import frappe
 
 def after_install():
     create_custom_fields()
+    create_payment_balance_client_script()
     create_client_script()
     create_server_script()
     frappe.db.commit()
@@ -167,7 +168,8 @@ frappe.msgprint("Payment Entry " + pe.name + " created successfully.", alert=Tru
     }).insert(ignore_permissions=True)
 
 
-def create_custom_fields():
+def create_custom_fields()
+    create_payment_balance_client_script():
     fields = [
         {"dt": "Sales Order", "fieldname": "custom_payment_", "fieldtype": "Section Break", "label": "Payment Details", "insert_after": "taxes", "collapsible": 1},
         {"dt": "Sales Order", "fieldname": "custom_payment_entry", "fieldtype": "Link", "label": "Payment Entry", "options": "Payment Entry", "insert_after": "custom_payment_", "read_only": 1},
@@ -209,3 +211,183 @@ def create_custom_fields():
             "doctype": "Custom Field",
             **f
         }).insert(ignore_permissions=True)
+
+
+def create_payment_balance_client_script():
+    if frappe.db.exists("Client Script", {"name": "Sales Order Payment and Balance"}):
+        return
+
+    frappe.get_doc({
+        "doctype": "Client Script",
+        "name": "Sales Order Payment and Balance",
+        "dt": "Sales Order",
+        "view": "Form",
+        "enabled": 1,
+        "module": "Havano Laybye",
+        "script": r"""
+frappe.ui.form.on('Sales Order', {
+
+    refresh: function(frm) {
+        frm.trigger('set_account_query');
+        if (frm.doc.custom_account_paid_to) {
+            frm.trigger('custom_account_paid_to');
+        } else {
+            toggle_currency_fields(frm);
+        }
+        calculate_balance(frm);
+    },
+
+    custom_account_paid_to: function(frm) {
+        if (!frm.doc.custom_account_paid_to) {
+            frm.doc.custom_account_currency = '';
+            frm.set_value('custom_exchange_rate', 1);
+            toggle_currency_fields(frm);
+            return;
+        }
+        frappe.db.get_value('Account', frm.doc.custom_account_paid_to, 'account_currency', function(r) {
+            if (!r || !r.account_currency) return;
+            let company_currency = frappe.boot.sysdefaults.currency;
+            let acct_currency    = r.account_currency;
+
+            frm.doc.custom_account_currency = acct_currency;
+            frm.get_field('custom_account_currency') &&
+                frm.get_field('custom_account_currency').set_input(acct_currency);
+            frm.refresh_field('custom_account_currency');
+
+            if (acct_currency !== company_currency) {
+                frappe.call({
+                    method: 'erpnext.setup.utils.get_exchange_rate',
+                    args: {
+                        transaction_date: frm.doc.transaction_date || frappe.datetime.get_today(),
+                        from_currency:    acct_currency,
+                        to_currency:      company_currency,
+                        args:             'for_buying'
+                    },
+                    callback: function(res) {
+                        frm.set_value('custom_exchange_rate', res.message || 1);
+                        if (!res.message) frappe.msgprint(__('No exchange rate found. Please enter manually.'));
+                        toggle_currency_fields(frm);
+                    }
+                });
+            } else {
+                frm.set_value('custom_exchange_rate', 1);
+                toggle_currency_fields(frm);
+            }
+        });
+        frm.trigger('set_account_query');
+    },
+
+    set_account_query: function(frm) {
+        frm.set_query('custom_account_paid_to', function() {
+            return {
+                filters: [
+                    ['Account', 'account_type', 'in', ['Bank', 'Cash']],
+                    ['Account', 'is_group',     '=',  0],
+                    ['Account', 'company',      '=',  frappe.defaults.get_default('company')]
+                ]
+            };
+        });
+    },
+
+    custom_amount_paid: function(frm) {
+        if (frm._paid_updating) return;
+        frm._paid_updating = true;
+        let rate = flt(frm.doc.custom_exchange_rate) || 1;
+        if (is_multi_currency(frm)) {
+            frm.doc.custom_received_amount = flt(frm.doc.custom_amount_paid / rate, 2);
+            frm.refresh_field('custom_received_amount');
+        }
+        frm._paid_updating = false;
+        update_rate_description(frm);
+        calculate_balance(frm);
+    },
+
+    custom_received_amount: function(frm) {
+        if (frm._paid_updating) return;
+        if (!is_multi_currency(frm)) return;
+        frm._paid_updating = true;
+        let rate = flt(frm.doc.custom_exchange_rate) || 1;
+        frm.doc.custom_amount_paid = flt(frm.doc.custom_received_amount * rate, 2);
+        frm.refresh_field('custom_amount_paid');
+        frm._paid_updating = false;
+        update_rate_description(frm);
+        calculate_balance(frm);
+    },
+
+    custom_exchange_rate: function(frm) {
+        if (!is_multi_currency(frm)) return;
+        let rate = flt(frm.doc.custom_exchange_rate) || 1;
+        frm._paid_updating = true;
+        frm.doc.custom_received_amount = flt(frm.doc.custom_amount_paid / rate, 2);
+        frm.refresh_field('custom_received_amount');
+        frm._paid_updating = false;
+        update_rate_description(frm);
+        calculate_balance(frm);
+    },
+
+    custom_payment_method: function(frm) {
+        frm.set_value('custom_account_paid_to', '');
+        frm.doc.custom_account_currency = '';
+        frm.set_value('custom_exchange_rate', 1);
+        toggle_currency_fields(frm);
+        frm.trigger('set_account_query');
+    }
+});
+
+function calculate_balance(frm) {
+    let grand_total = flt(frm.doc.grand_total) || 0;
+    let amount_paid = flt(frm.doc.custom_amount_paid) || 0;
+    frm.doc.custom_balance_remaining = flt(grand_total - amount_paid, 2);
+    frm.refresh_field('custom_balance_remaining');
+}
+
+function toggle_currency_fields(frm) {
+    let multi            = is_multi_currency(frm);
+    let company_currency = frappe.boot.sysdefaults.currency;
+    let acct_currency    = frm.doc.custom_account_currency || company_currency;
+
+    frm.set_df_property('custom_exchange_rate',   'hidden', multi ? 0 : 1);
+    frm.set_df_property('custom_received_amount', 'hidden', multi ? 0 : 1);
+
+    if (multi) {
+        frm.set_df_property('custom_amount_paid', 'label', 'Paid Amount (' + company_currency + ')');
+        frm.set_df_property('custom_received_amount', 'label', 'Received Amount (' + acct_currency + ')');
+        frm.set_df_property('custom_exchange_rate', 'label', 'Target Exchange Rate');
+        frm.set_df_property('custom_balance_remaining', 'label', 'Balance Remaining (' + company_currency + ')');
+    } else {
+        frm.set_df_property('custom_amount_paid', 'label', 'Amount Paid (' + acct_currency + ')');
+        frm.set_df_property('custom_received_amount', 'label', 'Received Amount');
+        frm.set_df_property('custom_exchange_rate', 'label', 'Exchange Rate');
+        frm.set_df_property('custom_balance_remaining', 'label', 'Balance Remaining (' + acct_currency + ')');
+    }
+
+    update_rate_description(frm);
+    frm.refresh_fields(['custom_amount_paid', 'custom_balance_remaining', 'custom_exchange_rate', 'custom_received_amount', 'custom_account_currency']);
+}
+
+function update_rate_description(frm) {
+    if (!is_multi_currency(frm)) {
+        frm.set_df_property('custom_exchange_rate', 'description', '');
+        frm.refresh_field('custom_exchange_rate');
+        return;
+    }
+    let rate             = flt(frm.doc.custom_exchange_rate, 4);
+    let acct_currency    = frm.doc.custom_account_currency;
+    let company_currency = frappe.boot.sysdefaults.currency;
+    frm.set_df_property('custom_exchange_rate', 'description',
+        '1 ' + acct_currency + ' = ' + rate + ' ' + company_currency
+    );
+    frm.refresh_field('custom_exchange_rate');
+}
+
+function is_multi_currency(frm) {
+    let acct = frm.doc.custom_account_currency;
+    return !!(acct && acct !== frappe.boot.sysdefaults.currency);
+}
+
+function flt(val, precision) {
+    precision = (precision !== undefined) ? precision : 9;
+    return parseFloat((parseFloat(val) || 0).toFixed(precision));
+}
+"""
+    }).insert(ignore_permissions=True)
