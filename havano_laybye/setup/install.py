@@ -1,6 +1,7 @@
 import frappe
 
 def after_install():
+    create_custom_fields()
     create_client_script()
     create_server_script()
     frappe.db.commit()
@@ -164,3 +165,47 @@ frappe.db.set_value("Sales Order", doc.name, "custom_payment_entry", pe.name)
 frappe.msgprint("Payment Entry " + pe.name + " created successfully.", alert=True)
 """
     }).insert(ignore_permissions=True)
+
+
+def create_custom_fields():
+    fields = [
+        {"dt": "Sales Order", "fieldname": "custom_payment_", "fieldtype": "Section Break", "label": "Payment Details", "insert_after": "taxes", "collapsible": 1},
+        {"dt": "Sales Order", "fieldname": "custom_payment_entry", "fieldtype": "Link", "label": "Payment Entry", "options": "Payment Entry", "insert_after": "custom_payment_", "read_only": 1},
+        {"dt": "Sales Order", "fieldname": "custom_account_paid_to", "fieldtype": "Link", "label": "Account Paid To", "options": "Account", "insert_after": "custom_payment_entry"},
+        {"dt": "Sales Order", "fieldname": "custom_received_amount", "fieldtype": "Currency", "label": "Received Amount", "insert_after": "custom_account_paid_to"},
+        {"dt": "Sales Order", "fieldname": "custom_payment_method", "fieldtype": "Select", "label": "Payment Method", "options": "Cash\nBank\nMobile Money", "insert_after": "custom_received_amount", "translatable": 1},
+        {"dt": "Sales Order", "fieldname": "custom_column_break_qus6v", "fieldtype": "Column Break", "insert_after": "custom_payment_method"},
+        {"dt": "Sales Order", "fieldname": "custom_balance_remaining", "fieldtype": "Currency", "label": "Balance Remaining", "insert_after": "custom_column_break_qus6v", "read_only": 1, "in_list_view": 1},
+        {"dt": "Sales Order", "fieldname": "custom_account_currency", "fieldtype": "Data", "label": "Account Currency", "insert_after": "custom_balance_remaining", "read_only": 1, "print_hide": 1, "translatable": 1},
+        {"dt": "Sales Order", "fieldname": "custom_amount_paid", "fieldtype": "Currency", "label": "Amount Paid", "insert_after": "custom_account_currency"},
+        {"dt": "Sales Order", "fieldname": "custom_exchange_rate", "fieldtype": "Float", "label": "Exchange Rate", "insert_after": "custom_amount_paid", "default": "1"},
+        {"dt": "Sales Order", "fieldname": "custom_column_break_9ds3v", "fieldtype": "Column Break", "insert_after": "packed_items"},
+        {"dt": "Sales Order", "fieldname": "custom_column_break_lsrh0", "fieldtype": "Column Break", "insert_after": "custom_column_break_9ds3v"},
+        {"dt": "Sales Order", "fieldname": "custom_payment_details", "fieldtype": "Currency", "label": "Payment Details", "insert_after": "custom_column_break_lsrh0"},
+        {"dt": "Sales Order", "fieldname": "custom_column_break_xq6ey", "fieldtype": "Column Break", "insert_after": "custom_payment_details"},
+        {"dt": "Sales Order", "fieldname": "custom_laybye_section", "fieldtype": "Section Break", "label": "Laybye Payments", "insert_after": "terms", "collapsible": 1},
+        {"dt": "Sales Order", "fieldname": "custom_laybye_date", "fieldtype": "Date", "label": "Payment Date", "insert_after": "custom_laybye_section", "default": "Today"},
+        {"dt": "Sales Order", "fieldname": "custom_laybye_method", "fieldtype": "Select", "label": "Payment Method", "options": "Cash\nBank\nMobile Money", "insert_after": "custom_laybye_date", "default": "Cash"},
+        {"dt": "Sales Order", "fieldname": "custom_laybye_account", "fieldtype": "Link", "label": "Account Paid To", "options": "Account", "insert_after": "custom_laybye_method"},
+        {"dt": "Sales Order", "fieldname": "custom_laybye_account_currency", "fieldtype": "Data", "label": "Account Currency", "insert_after": "custom_laybye_account", "read_only": 1, "print_hide": 1},
+        {"dt": "Sales Order", "fieldname": "custom_laybye_payments", "fieldtype": "Table", "label": "Laybye Payments", "options": "Laybye Payment Item", "insert_after": "custom_laybye_account_currency"},
+        {"dt": "Sales Order", "fieldname": "custom_laybye_totals_section", "fieldtype": "Section Break", "insert_after": "custom_laybye_payments"},
+        {"dt": "Sales Order", "fieldname": "custom_laybye_balance_display", "fieldtype": "HTML", "label": "Balance Display", "insert_after": "custom_laybye_totals_section"},
+        {"dt": "Sales Order", "fieldname": "custom_laybye_col2", "fieldtype": "Column Break", "insert_after": "custom_laybye_balance_display"},
+        {"dt": "Sales Order", "fieldname": "custom_laybye_col1", "fieldtype": "Column Break", "insert_after": "custom_laybye_col2"},
+        {"dt": "Sales Order", "fieldname": "custom_laybye_exchange_rate", "fieldtype": "Float", "label": "Exchange Rate", "insert_after": "custom_laybye_col1", "default": "1"},
+        {"dt": "Sales Order", "fieldname": "custom_laybye_paid_amount", "fieldtype": "Currency", "label": "Paid Amount", "insert_after": "custom_laybye_exchange_rate"},
+        {"dt": "Sales Order", "fieldname": "custom_laybye_received_amount", "fieldtype": "Currency", "label": "Received Amount (Foreign)", "options": "custom_laybye_account_currency", "insert_after": "custom_laybye_paid_amount"},
+        {"dt": "Sales Order", "fieldname": "custom_laybye_remarks", "fieldtype": "Small Text", "label": "Remarks", "insert_after": "custom_laybye_received_amount"},
+        {"dt": "Sales Order", "fieldname": "custom_laybye_post_btn", "fieldtype": "Button", "label": "Post Payment Entry", "insert_after": "custom_laybye_remarks"},
+        {"dt": "Sales Order", "fieldname": "custom_laybye_total_paid", "fieldtype": "Currency", "label": "Total Paid", "insert_after": "custom_laybye_post_btn", "read_only": 1},
+        {"dt": "Sales Order", "fieldname": "custom_laybye_balance", "fieldtype": "Currency", "label": "Balance Due", "insert_after": "custom_laybye_total_paid", "read_only": 1},
+    ]
+
+    for f in fields:
+        if frappe.db.exists("Custom Field", {"dt": f["dt"], "fieldname": f["fieldname"]}):
+            continue
+        frappe.get_doc({
+            "doctype": "Custom Field",
+            **f
+        }).insert(ignore_permissions=True)
